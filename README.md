@@ -135,12 +135,14 @@ var sdk = AuthGate.builder(config)
 
 ## Roadmap
 
-- [ ] **Token Exchange (RFC 8693)** — delegation and impersonation flows
-- [ ] **Token Refresh** — automatic access token renewal via refresh tokens
-- [ ] **UserInfo endpoint** — `getUserInfo(accessToken)` to retrieve user details without extra IdP calls
-- [ ] **Drop getters, use access modifiers** — expose fields via package-private access instead of getters
-- [ ] **Artifact optimization** — reduce SDK binary size and dependency footprint
-- [ ] **Maven Central** — publish artifact to Maven Central
+| Status | Feature | Issue |
+|--------|---------|-------|
+| 🔲 | Token Exchange (RFC 8693) — delegation and impersonation flows | [issue](https://github.com/homni-app/authgate-sdk-java/issues/1) |
+| 🔲 | Token Refresh — automatic access token renewal via refresh tokens | [issue](https://github.com/homni-app/authgate-sdk-java/issues/2) |
+| 🔲 | UserInfo endpoint — retrieve user details without extra IdP calls | [issue](https://github.com/homni-app/authgate-sdk-java/issues/3) |
+| 🔲 | Drop getters, use access modifiers | [issue](https://github.com/homni-app/authgate-sdk-java/issues/4) |
+| 🔲 | Artifact optimization — reduce binary size | [issue](https://github.com/homni-app/authgate-sdk-java/issues/5) |
+| 🔲 | Publish to Maven Central | [issue](https://github.com/homni-app/authgate-sdk-java/issues/6) |
 
 ## License
 

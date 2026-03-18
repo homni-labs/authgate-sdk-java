@@ -135,12 +135,14 @@ var sdk = AuthGate.builder(config)
 
 ## Roadmap
 
-- [ ] **Token Exchange (RFC 8693)** — делегирование и имперсонация
-- [ ] **Token Refresh** — автоматическое обновление access-токенов через refresh-токены
-- [ ] **UserInfo-эндпоинт** — `getUserInfo(accessToken)` для получения данных пользователя без лишних запросов к IdP
-- [ ] **Отказ от геттеров в пользу модификаторов доступа** — доступ к полям через package-private вместо геттеров
-- [ ] **Оптимизация артефакта** — снижение размера SDK и минимизация зависимостей
-- [ ] **Maven Central** — публикация артефакта в Maven Central
+| Статус | Фича | Issue |
+|--------|-------|-------|
+| 🔲 | Token Exchange (RFC 8693) — делегирование и имперсонация | [issue](https://github.com/homni-app/authgate-sdk-java/issues/1) |
+| 🔲 | Token Refresh — автоматическое обновление access-токенов через refresh-токены | [issue](https://github.com/homni-app/authgate-sdk-java/issues/2) |
+| 🔲 | UserInfo-эндпоинт — получение данных пользователя без лишних запросов к IdP | [issue](https://github.com/homni-app/authgate-sdk-java/issues/3) |
+| 🔲 | Отказ от геттеров в пользу модификаторов доступа | [issue](https://github.com/homni-app/authgate-sdk-java/issues/4) |
+| 🔲 | Оптимизация артефакта — снижение размера SDK | [issue](https://github.com/homni-app/authgate-sdk-java/issues/5) |
+| 🔲 | Публикация в Maven Central | [issue](https://github.com/homni-app/authgate-sdk-java/issues/6) |
 
 ## Лицензия
 
