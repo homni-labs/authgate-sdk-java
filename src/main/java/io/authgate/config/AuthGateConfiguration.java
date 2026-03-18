@@ -1,5 +1,6 @@
 package io.authgate.config;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -55,17 +56,55 @@ public final class AuthGateConfiguration {
     private final boolean requireHttps;
 
     private AuthGateConfiguration(Builder builder) {
-        this.issuerUri = Objects.requireNonNull(builder.issuerUri, "issuerUri must not be null");
-        this.clientId = Objects.requireNonNull(builder.clientId, "clientId must not be null");
+        Objects.requireNonNull(builder.issuerUri, "issuerUri must not be null");
+        if (builder.issuerUri.isBlank()) {
+            throw new IllegalArgumentException("issuerUri must not be blank");
+        }
+        try {
+            URI uri = URI.create(builder.issuerUri);
+            if (uri.getScheme() == null || uri.getHost() == null) {
+                throw new IllegalArgumentException(
+                        "issuerUri must be a valid URL with scheme and host: " + builder.issuerUri);
+            }
+        } catch (IllegalArgumentException e) {
+            if (e.getMessage().startsWith("issuerUri")) throw e;
+            throw new IllegalArgumentException("issuerUri is not a valid URI: " + builder.issuerUri, e);
+        }
+        this.issuerUri = builder.issuerUri;
+
+        Objects.requireNonNull(builder.clientId, "clientId must not be null");
+        if (builder.clientId.isBlank()) {
+            throw new IllegalArgumentException("clientId must not be blank");
+        }
+        this.clientId = builder.clientId;
+
+        if (builder.clientSecret != null && builder.clientSecret.isBlank()) {
+            throw new IllegalArgumentException("clientSecret must not be blank");
+        }
         this.clientSecret = builder.clientSecret;
+
+        if (builder.audience != null && builder.audience.isBlank()) {
+            throw new IllegalArgumentException("audience must not be blank");
+        }
         this.audience = builder.audience;
+
         this.httpTimeout = Objects.requireNonNullElse(builder.httpTimeout, Duration.ofSeconds(10));
+        if (this.httpTimeout.isNegative() || this.httpTimeout.isZero()) {
+            throw new IllegalArgumentException("httpTimeout must be positive");
+        }
+
         this.discoveryTtl = Objects.requireNonNullElse(builder.discoveryTtl, Duration.ofHours(1));
+        if (this.discoveryTtl.isNegative() || this.discoveryTtl.isZero()) {
+            throw new IllegalArgumentException("discoveryTtl must be positive");
+        }
+
         this.clockSkewTolerance = Objects.requireNonNullElse(builder.clockSkewTolerance, Duration.ofSeconds(30));
+        if (this.clockSkewTolerance.isNegative()) {
+            throw new IllegalArgumentException("clockSkewTolerance must not be negative");
+        }
+
         this.requireHttps = builder.requireHttps;
     }
-
-    // ── Accessors ────────────────────────────────────────────────
 
     /** OIDC provider base URL. Never {@code null}. */
     public String issuerUri()           { return issuerUri; }

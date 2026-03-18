@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -28,6 +29,7 @@ public final class OidcDiscoveryClient implements EndpointDiscovery {
 
     private static final Logger log = LoggerFactory.getLogger(OidcDiscoveryClient.class);
     private static final Duration DEFAULT_TTL = Duration.ofHours(1);
+    private static final Duration LOCK_TIMEOUT = Duration.ofSeconds(30);
     private static final String WELL_KNOWN_PATH = ".well-known/openid-configuration";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
@@ -68,7 +70,17 @@ public final class OidcDiscoveryClient implements EndpointDiscovery {
             return deserialize(json);
         }
 
-        fetchLock.lock();
+        boolean acquired;
+        try {
+            acquired = fetchLock.tryLock(LOCK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IdentityProviderException("Interrupted while waiting for OIDC discovery lock");
+        }
+        if (!acquired) {
+            throw new IdentityProviderException(
+                    "Timed out waiting for OIDC discovery lock after " + LOCK_TIMEOUT.toSeconds() + "s");
+        }
         try {
             json = cacheStore.get(cacheKey);
             if (json != null) {
