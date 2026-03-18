@@ -27,10 +27,19 @@ import java.util.Set;
  *
  * <h2>Minimal setup:</h2>
  * <pre>{@code
- * var sdk = new AuthGate(new AuthGateConfiguration.Builder()
- *     .issuerUri("https://idp.example.com/realms/my-realm/")
- *     .clientId("my-client")
- *     .build());
+ * var sdk = AuthGate.builder(new AuthGateConfiguration.Builder()
+ *         .issuerUri("https://idp.example.com/realms/my-realm/")
+ *         .clientId("my-client")
+ *         .build())
+ *     .build();
+ * }</pre>
+ *
+ * <h2>Custom infrastructure:</h2>
+ * <pre>{@code
+ * var sdk = AuthGate.builder(config)
+ *     .cacheStore(redisCacheStore)
+ *     .httpTransport(customTransport)
+ *     .build();
  * }</pre>
  *
  * <h2>Token validation:</h2>
@@ -47,39 +56,71 @@ public final class AuthGate implements Closeable {
     private final ClientCredentialsClient clientCredentialsClient;
     private final HttpTransport httpTransport;
 
-    public AuthGate(AuthGateConfiguration config) {
-        this(config, new InMemoryCacheStore());
-    }
-
-    public AuthGate(AuthGateConfiguration config, CacheStore cacheStore) {
-        this(config, cacheStore, new DefaultHttpTransport(config.httpTimeout()));
-    }
-
-    public AuthGate(AuthGateConfiguration config, CacheStore cacheStore, HttpTransport httpTransport) {
-        Objects.requireNonNull(config);
-        Objects.requireNonNull(cacheStore);
-        Objects.requireNonNull(httpTransport);
-
+    private AuthGate(TokenValidator tokenValidator,
+                     ClientCredentialsClient clientCredentialsClient,
+                     HttpTransport httpTransport) {
+        this.tokenValidator = tokenValidator;
+        this.clientCredentialsClient = clientCredentialsClient;
         this.httpTransport = httpTransport;
+    }
 
-        CircuitBreakerHttpTransport transport = new CircuitBreakerHttpTransport(
-                httpTransport,
-                config.circuitBreakerFailureThreshold(),
-                config.circuitBreakerResetTimeout());
+    public static Builder builder(AuthGateConfiguration config) {
+        return new Builder(config);
+    }
 
-        IssuerUri issuerUri = new IssuerUri(config.issuerUri(), config.requireHttps());
-        OidcDiscoveryClient discoveryClient = new OidcDiscoveryClient(issuerUri, transport, cacheStore, config.discoveryTtl());
+    public static final class Builder {
 
-        NimbusJwtProcessor jwtProcessor = new NimbusJwtProcessor(discoveryClient);
-        this.tokenValidator = new TokenValidator(jwtProcessor, issuerUri, config.audience(), config.clockSkewTolerance());
+        private final AuthGateConfiguration config;
+        private CacheStore cacheStore;
+        private HttpTransport httpTransport;
 
-        TokenEndpointClient tokenEndpointClient = new TokenEndpointClient(discoveryClient, transport);
+        private Builder(AuthGateConfiguration config) {
+            this.config = Objects.requireNonNull(config, "config");
+        }
 
-        this.clientCredentialsClient = config.clientSecret() != null
-                ? new ClientCredentialsClient(
-                        tokenEndpointClient, config.clientId(),
-                        config.clientSecret(), config.serviceTokenCacheSize())
-                : null;
+        public Builder cacheStore(CacheStore cacheStore) {
+            this.cacheStore = Objects.requireNonNull(cacheStore, "cacheStore");
+            return this;
+        }
+
+        public Builder httpTransport(HttpTransport httpTransport) {
+            this.httpTransport = Objects.requireNonNull(httpTransport, "httpTransport");
+            return this;
+        }
+
+        public AuthGate build() {
+            CacheStore cache = this.cacheStore != null
+                    ? this.cacheStore
+                    : new InMemoryCacheStore();
+
+            HttpTransport transport = this.httpTransport != null
+                    ? this.httpTransport
+                    : new DefaultHttpTransport(config.httpTimeout());
+
+            CircuitBreakerHttpTransport circuitBreaker = new CircuitBreakerHttpTransport(
+                    transport,
+                    config.circuitBreakerFailureThreshold(),
+                    config.circuitBreakerResetTimeout());
+
+            IssuerUri issuerUri = new IssuerUri(config.issuerUri(), config.requireHttps());
+            OidcDiscoveryClient discoveryClient = new OidcDiscoveryClient(
+                    issuerUri, circuitBreaker, cache, config.discoveryTtl());
+
+            NimbusJwtProcessor jwtProcessor = new NimbusJwtProcessor(discoveryClient);
+            TokenValidator tokenValidator = new TokenValidator(
+                    jwtProcessor, issuerUri, config.audience(), config.clockSkewTolerance());
+
+            TokenEndpointClient tokenEndpointClient = new TokenEndpointClient(
+                    discoveryClient, circuitBreaker);
+
+            ClientCredentialsClient clientCredentialsClient = config.clientSecret() != null
+                    ? new ClientCredentialsClient(
+                            tokenEndpointClient, config.clientId(),
+                            config.clientSecret(), config.serviceTokenCacheSize())
+                    : null;
+
+            return new AuthGate(tokenValidator, clientCredentialsClient, transport);
+        }
     }
 
     /**

@@ -21,7 +21,7 @@ class AuthGateConfigurationTest {
                 .audience("my-audience")
                 .build();
 
-        AuthGate sdk = new AuthGate(config);
+        AuthGate sdk = AuthGate.builder(config).build();
         assertThat(sdk).isNotNull();
     }
 
