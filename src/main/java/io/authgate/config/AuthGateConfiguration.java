@@ -54,6 +54,8 @@ public final class AuthGateConfiguration {
     private final Duration discoveryTtl;
     private final Duration clockSkewTolerance;
     private final boolean requireHttps;
+    private final int circuitBreakerFailureThreshold;
+    private final Duration circuitBreakerResetTimeout;
 
     private AuthGateConfiguration(Builder builder) {
         Objects.requireNonNull(builder.issuerUri, "issuerUri must not be null");
@@ -104,6 +106,17 @@ public final class AuthGateConfiguration {
         }
 
         this.requireHttps = builder.requireHttps;
+
+        this.circuitBreakerFailureThreshold = builder.circuitBreakerFailureThreshold;
+        if (this.circuitBreakerFailureThreshold <= 0) {
+            throw new IllegalArgumentException("circuitBreakerFailureThreshold must be positive");
+        }
+
+        this.circuitBreakerResetTimeout = Objects.requireNonNullElse(
+                builder.circuitBreakerResetTimeout, Duration.ofSeconds(30));
+        if (this.circuitBreakerResetTimeout.isNegative() || this.circuitBreakerResetTimeout.isZero()) {
+            throw new IllegalArgumentException("circuitBreakerResetTimeout must be positive");
+        }
     }
 
     /** OIDC provider base URL. Never {@code null}. */
@@ -130,6 +143,12 @@ public final class AuthGateConfiguration {
     /** Whether to reject non-HTTPS issuer URIs. */
     public boolean requireHttps()       { return requireHttps; }
 
+    /** Number of consecutive failures before the circuit breaker opens. Never zero or negative. */
+    public int circuitBreakerFailureThreshold() { return circuitBreakerFailureThreshold; }
+
+    /** Duration the circuit stays open before allowing a probe call. Never {@code null}. */
+    public Duration circuitBreakerResetTimeout() { return circuitBreakerResetTimeout; }
+
     public static final class Builder {
         private String issuerUri;
         private String clientId;
@@ -139,6 +158,8 @@ public final class AuthGateConfiguration {
         private Duration discoveryTtl;
         private Duration clockSkewTolerance;
         private boolean requireHttps;
+        private int circuitBreakerFailureThreshold = 5;
+        private Duration circuitBreakerResetTimeout;
 
         public Builder() {}
 
@@ -150,6 +171,8 @@ public final class AuthGateConfiguration {
         public Builder discoveryTtl(Duration v)           { this.discoveryTtl = v; return this; }
         public Builder clockSkewTolerance(Duration v)     { this.clockSkewTolerance = v; return this; }
         public Builder requireHttps(boolean v)            { this.requireHttps = v; return this; }
+        public Builder circuitBreakerFailureThreshold(int v)   { this.circuitBreakerFailureThreshold = v; return this; }
+        public Builder circuitBreakerResetTimeout(Duration v)  { this.circuitBreakerResetTimeout = v; return this; }
 
         public AuthGateConfiguration build() {
             return new AuthGateConfiguration(this);

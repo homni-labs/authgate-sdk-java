@@ -9,9 +9,9 @@ import io.authgate.discovery.OidcDiscoveryClient;
 import io.authgate.domain.model.AuthorizationChain;
 import io.authgate.domain.model.IssuerUri;
 import io.authgate.domain.model.ServiceToken;
-import io.authgate.domain.model.ValidatedToken;
 import io.authgate.domain.model.ValidationOutcome;
 import io.authgate.domain.service.TokenValidationRules;
+import io.authgate.http.CircuitBreakerHttpTransport;
 import io.authgate.http.DefaultHttpTransport;
 import io.authgate.validation.NimbusJwtProcessor;
 import io.authgate.validation.TokenValidator;
@@ -56,8 +56,13 @@ public final class AuthGate {
         Objects.requireNonNull(cacheStore);
         Objects.requireNonNull(httpTransport);
 
+        var transport = new CircuitBreakerHttpTransport(
+                httpTransport,
+                config.circuitBreakerFailureThreshold(),
+                config.circuitBreakerResetTimeout());
+
         var issuerUri = new IssuerUri(config.issuerUri(), config.requireHttps());
-        var discoveryClient = new OidcDiscoveryClient(issuerUri, httpTransport, cacheStore, config.discoveryTtl());
+        var discoveryClient = new OidcDiscoveryClient(issuerUri, transport, cacheStore, config.discoveryTtl());
 
         var jwtProcessor = new NimbusJwtProcessor(discoveryClient);
         var validationRules = new TokenValidationRules(issuerUri, config.audience(), config.clockSkewTolerance());
@@ -65,7 +70,7 @@ public final class AuthGate {
 
         this.clientCredentialsClient = config.clientSecret() != null
                 ? new ClientCredentialsClient(
-                        discoveryClient, httpTransport, config.clientId(),
+                        discoveryClient, transport, config.clientId(),
                         config.clientSecret())
                 : null;
     }
