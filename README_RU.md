@@ -1,6 +1,21 @@
+<div align="center">
+
 # AuthGate SDK
 
-Провайдер-независимая OIDC-библиотека для Java 21+. Валидация JWT и получение сервисных токенов через client-credentials — без привязки к фреймворку.
+<img src="assets/authgate-logo.jpeg" width="400" alt="AuthGate Logo">
+
+**Провайдер-независимая OIDC-библиотека для Java 21+**
+
+Валидация JWT и получение сервисных токенов через client-credentials — без привязки к фреймворку.
+
+[![Java 21+](https://img.shields.io/badge/Java-21%2B-blue)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+[English](README.md) | [Русский](README_RU.md)
+
+</div>
+
+---
 
 ## Подключение
 
@@ -8,7 +23,7 @@
 <dependency>
     <groupId>io.authgate</groupId>
     <artifactId>authgate-sdk</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
@@ -42,7 +57,7 @@ var config = new AuthGateConfiguration.Builder()
 var sdk = AuthGate.builder(config).build();
 ```
 
-Custom инфраструктура:
+Кастомная инфраструктура:
 
 ```java
 var sdk = AuthGate.builder(config)
@@ -73,7 +88,8 @@ switch (sdk.authorizeFromHeader(authHeader).scope(new OAuthScope("profile")).eva
 }
 ```
 
-**Коды отказа:**
+<details>
+<summary><b>Коды отказа</b></summary>
 
 | Код | Описание |
 |---|---|
@@ -83,6 +99,8 @@ switch (sdk.authorizeFromHeader(authHeader).scope(new OAuthScope("profile")).eva
 | `AUDIENCE_MISMATCH` | Audience не совпадает |
 | `MALFORMED_TOKEN` | Невалидная структура JWT |
 | `UNKNOWN` | Непредвиденная ошибка |
+
+</details>
 
 ### Client Credentials
 
@@ -109,17 +127,21 @@ var sdk = AuthGate.builder(config)
 
 | Библиотека | Назначение |
 |---|---|
-| nimbus-jose-jwt | Валидация JWT, JWKS |
-| jackson-databind | Парсинг JSON |
-| slf4j-api | Фасад логирования |
+| `nimbus-jose-jwt` | Валидация JWT, JWKS |
+| `jackson-databind` | Парсинг JSON |
+| `slf4j-api` | Фасад логирования |
 
 **Требования:** Java 21+
 
 ## Roadmap
 
-1. **Token Exchange (RFC 8693)** — делегирование и имперсонация
-2. **Token Refresh** — автоматическое обновление access-токенов через refresh-токены
-3. **UserInfo-эндпоинт** — `getUserInfo(accessToken)` для получения данных пользователя (sub, scopes, roles) без лишних запросов к IdP
-4. **Отказ от геттеров в пользу модификаторов доступа** — доступ к полям через package-private вместо геттеров (`token.accessToken` вместо `token.accessToken()`), при необходимости реорганизация пакетов; `public`-полей избегать
-5. **Оптимизация артефакта** — снижение размера SDK и минимизация зависимостей
-6. **Maven Central** — публикация артефакта в Maven Central
+- [ ] **Token Exchange (RFC 8693)** — делегирование и имперсонация
+- [ ] **Token Refresh** — автоматическое обновление access-токенов через refresh-токены
+- [ ] **UserInfo-эндпоинт** — `getUserInfo(accessToken)` для получения данных пользователя без лишних запросов к IdP
+- [ ] **Отказ от геттеров в пользу модификаторов доступа** — доступ к полям через package-private вместо геттеров
+- [ ] **Оптимизация артефакта** — снижение размера SDK и минимизация зависимостей
+- [ ] **Maven Central** — публикация артефакта в Maven Central
+
+## Лицензия
+
+Проект распространяется под лицензией [MIT](LICENSE).

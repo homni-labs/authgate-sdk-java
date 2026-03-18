@@ -1,6 +1,21 @@
+<div align="center">
+
 # AuthGate SDK
 
-Provider-agnostic OIDC library for Java 21+. Handles JWT validation and client-credentials token acquisition — without framework dependencies.
+<img src="assets/authgate-logo.jpeg" width="400" alt="AuthGate Logo">
+
+**Provider-agnostic OIDC library for Java 21+**
+
+Handles JWT validation and client-credentials token acquisition — without framework dependencies.
+
+[![Java 21+](https://img.shields.io/badge/Java-21%2B-blue)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+[English](README.md) | [Русский](README_RU.md)
+
+</div>
+
+---
 
 ## Installation
 
@@ -73,7 +88,8 @@ switch (sdk.authorizeFromHeader(authHeader).scope(new OAuthScope("profile")).eva
 }
 ```
 
-**Rejection codes:**
+<details>
+<summary><b>Rejection codes</b></summary>
 
 | Code | Description |
 |---|---|
@@ -83,6 +99,8 @@ switch (sdk.authorizeFromHeader(authHeader).scope(new OAuthScope("profile")).eva
 | `AUDIENCE_MISMATCH` | Audience does not match |
 | `MALFORMED_TOKEN` | Invalid JWT structure |
 | `UNKNOWN` | Unexpected error |
+
+</details>
 
 ### Client Credentials
 
@@ -109,21 +127,21 @@ var sdk = AuthGate.builder(config)
 
 | Library | Purpose |
 |---|---|
-| nimbus-jose-jwt | JWT validation, JWKS |
-| jackson-databind | JSON parsing |
-| slf4j-api | Logging facade |
+| `nimbus-jose-jwt` | JWT validation, JWKS |
+| `jackson-databind` | JSON parsing |
+| `slf4j-api` | Logging facade |
 
 **Requires:** Java 21+
 
-## License
-
-[MIT](LICENSE)
-
 ## Roadmap
 
-1. **Token Exchange (RFC 8693)** — delegation and impersonation flows
-2. **Token Refresh** — automatic access token renewal via refresh tokens
-3. **UserInfo endpoint** — `getUserInfo(accessToken)` to retrieve user details (sub, scopes, roles) without extra IdP calls
-4. **Drop getters, use access modifiers** — expose fields via package-private access instead of getters (`token.accessToken` instead of `token.accessToken()`), reorganize packages as needed; avoid `public` fields
-5. **Artifact optimization** — reduce SDK binary size and dependency footprint
-6. **Maven Central** — publish artifact to Maven Central
+- [ ] **Token Exchange (RFC 8693)** — delegation and impersonation flows
+- [ ] **Token Refresh** — automatic access token renewal via refresh tokens
+- [ ] **UserInfo endpoint** — `getUserInfo(accessToken)` to retrieve user details without extra IdP calls
+- [ ] **Drop getters, use access modifiers** — expose fields via package-private access instead of getters
+- [ ] **Artifact optimization** — reduce SDK binary size and dependency footprint
+- [ ] **Maven Central** — publish artifact to Maven Central
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
