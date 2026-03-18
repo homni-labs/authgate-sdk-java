@@ -1,6 +1,6 @@
 <div align="center">
 
-# AuthGate SDK
+# Java AuthGate SDK
 
 <img src="assets/authgate-logo.jpeg" width="600" alt="AuthGate Logo">
 
