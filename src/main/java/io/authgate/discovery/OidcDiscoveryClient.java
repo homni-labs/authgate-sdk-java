@@ -1,5 +1,9 @@
 package io.authgate.discovery;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.authgate.application.port.CacheStore;
 import io.authgate.application.port.EndpointDiscovery;
 import io.authgate.application.port.HttpTransport;
 import io.authgate.domain.exception.IdentityProviderException;
@@ -9,36 +13,43 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Fetches and caches the OIDC Discovery document from
  * {@code {issuerUri}/.well-known/openid-configuration}.
  *
- * <p>Thread-safe. Uses read-write lock for concurrent access with lazy refresh.</p>
+ * <p>Thread-safe. Uses {@link CacheStore} for caching and a {@link ReentrantLock}
+ * to prevent thundering herd on cache miss.</p>
  */
 public final class OidcDiscoveryClient implements EndpointDiscovery {
 
     private static final Logger log = LoggerFactory.getLogger(OidcDiscoveryClient.class);
     private static final Duration DEFAULT_TTL = Duration.ofHours(1);
     private static final String WELL_KNOWN_PATH = ".well-known/openid-configuration";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final IssuerUri issuerUri;
     private final HttpTransport transport;
+    private final CacheStore cacheStore;
     private final Duration cacheTtl;
+    private final String cacheKey;
+    private final ReentrantLock fetchLock = new ReentrantLock();
 
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private volatile OidcDiscoveryDocument cached;
-
-    public OidcDiscoveryClient(IssuerUri issuerUri, HttpTransport transport, Duration cacheTtl) {
-        this.issuerUri = Objects.requireNonNull(issuerUri);
-        this.transport = Objects.requireNonNull(transport);
-        this.cacheTtl = Objects.requireNonNullElse(cacheTtl, DEFAULT_TTL);
+    public OidcDiscoveryClient(IssuerUri issuerUri, HttpTransport transport,
+                               CacheStore cacheStore, Duration cacheTtl) {
+        this.issuerUri  = Objects.requireNonNull(issuerUri);
+        this.transport  = Objects.requireNonNull(transport);
+        this.cacheStore = Objects.requireNonNull(cacheStore);
+        this.cacheTtl   = Objects.requireNonNullElse(cacheTtl, DEFAULT_TTL);
+        this.cacheKey   = "authgate:discovery:" + issuerUri;
     }
 
-    public OidcDiscoveryClient(IssuerUri issuerUri, HttpTransport transport) {
-        this(issuerUri, transport, DEFAULT_TTL);
+    public OidcDiscoveryClient(IssuerUri issuerUri, HttpTransport transport, CacheStore cacheStore) {
+        this(issuerUri, transport, cacheStore, DEFAULT_TTL);
     }
 
     @Override
@@ -51,44 +62,24 @@ public final class OidcDiscoveryClient implements EndpointDiscovery {
         );
     }
 
-    /**
-     * Forces a refresh of the cached discovery document.
-     */
-    public DiscoveredEndpoints refresh() {
-        lock.writeLock().lock();
-        try {
-            cached = fetchDiscoveryDocument();
-            return new DiscoveredEndpoints(
-                    new IssuerUri(cached.resolveIssuer()),
-                    cached.resolveTokenEndpoint(),
-                    cached.resolveJwksUri()
-            );
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
     private OidcDiscoveryDocument resolveDocument() {
-        // Fast path: read lock, check cache
-        lock.readLock().lock();
-        try {
-            if (cached != null && !cached.isExpired(cacheTtl)) {
-                return cached;
-            }
-        } finally {
-            lock.readLock().unlock();
+        var json = cacheStore.get(cacheKey);
+        if (json != null) {
+            return deserialize(json);
         }
 
-        // Slow path: write lock, re-check, fetch
-        lock.writeLock().lock();
+        fetchLock.lock();
         try {
-            if (cached != null && !cached.isExpired(cacheTtl)) {
-                return cached;
+            json = cacheStore.get(cacheKey);
+            if (json != null) {
+                return deserialize(json);
             }
-            cached = fetchDiscoveryDocument();
-            return cached;
+
+            var doc = fetchDiscoveryDocument();
+            cacheStore.put(cacheKey, serialize(doc), cacheTtl);
+            return doc;
         } finally {
-            lock.writeLock().unlock();
+            fetchLock.unlock();
         }
     }
 
@@ -107,8 +98,29 @@ public final class OidcDiscoveryClient implements EndpointDiscovery {
             return doc;
         } catch (IdentityProviderException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             throw new IdentityProviderException("Failed to fetch OIDC discovery from " + discoveryUrl, e);
+        }
+    }
+
+    private String serialize(OidcDiscoveryDocument doc) {
+        try {
+            return MAPPER.writeValueAsString(Map.of(
+                    "issuer", doc.resolveIssuer(),
+                    "token_endpoint", doc.resolveTokenEndpoint(),
+                    "jwks_uri", doc.resolveJwksUri()
+            ));
+        } catch (JsonProcessingException e) {
+            throw new IdentityProviderException("Failed to serialize discovery document", e);
+        }
+    }
+
+    private OidcDiscoveryDocument deserialize(String json) {
+        try {
+            Map<String, Object> map = MAPPER.readValue(json, MAP_TYPE);
+            return new OidcDiscoveryDocument(map);
+        } catch (JsonProcessingException e) {
+            throw new IdentityProviderException("Failed to deserialize discovery document", e);
         }
     }
 }

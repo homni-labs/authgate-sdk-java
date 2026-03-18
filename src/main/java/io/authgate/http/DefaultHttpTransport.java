@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.authgate.application.port.HttpTransport;
 import io.authgate.domain.exception.IdentityProviderException;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -20,10 +21,13 @@ import java.util.stream.Collectors;
  * Minimal HTTP transport using {@code java.net.http.HttpClient}.
  * Zero framework dependencies — works in any Java 21 environment.
  */
-public final class DefaultHttpTransport implements HttpTransport {
+public final class DefaultHttpTransport implements HttpTransport, Closeable {
+
+    private static final String JSON_CONTENT_TYPE = "application/json";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final Duration requestTimeout;
 
     public DefaultHttpTransport(Duration connectTimeout) {
         this.httpClient = HttpClient.newBuilder()
@@ -31,6 +35,7 @@ public final class DefaultHttpTransport implements HttpTransport {
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         this.objectMapper = new ObjectMapper();
+        this.requestTimeout = connectTimeout;
     }
 
     public DefaultHttpTransport() {
@@ -46,8 +51,9 @@ public final class DefaultHttpTransport implements HttpTransport {
 
         var request = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
+                .timeout(requestTimeout)
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .header("Accept", "application/json")
+                .header("Accept", JSON_CONTENT_TYPE)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
@@ -58,21 +64,39 @@ public final class DefaultHttpTransport implements HttpTransport {
     public TransportResponse fetchJson(String endpoint) {
         var request = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
-                .header("Accept", "application/json")
+                .timeout(requestTimeout)
+                .header("Accept", JSON_CONTENT_TYPE)
                 .GET()
                 .build();
 
         return execute(request);
     }
 
+    @Override
+    public void close() {
+        httpClient.close();
+    }
+
     private TransportResponse execute(HttpRequest request) {
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var contentType = response.headers().firstValue("Content-Type").orElse("");
+
+            if (!contentType.contains("json")) {
+                throw new IdentityProviderException(
+                        "Expected JSON response from " + request.uri()
+                                + " but received Content-Type: " + contentType
+                                + " (HTTP " + response.statusCode() + ")");
+            }
+
             Map<String, Object> body = objectMapper.readValue(response.body(), new TypeReference<>() {});
             return new TransportResponse(response.statusCode(), body);
+        } catch (IdentityProviderException e) {
+            throw e;
         } catch (IOException e) {
             throw new IdentityProviderException("HTTP request failed: " + request.uri(), e);
         } catch (InterruptedException e) {
+            //TODO не оч хорошее решение, но HttpClient.send() может выбросить InterruptedException, и мы должны уважать это
             Thread.currentThread().interrupt();
             throw new IdentityProviderException("HTTP request interrupted: " + request.uri(), e);
         }

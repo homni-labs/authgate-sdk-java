@@ -2,17 +2,40 @@ package io.authgate.config;
 
 import java.time.Duration;
 import java.util.Objects;
-import java.util.Set;
-import java.util.function.Consumer;
 
 /**
  * Immutable SDK configuration.
  *
- * <p>Only {@code issuerUri} and {@code clientId} are required.
- * All OIDC endpoints are resolved automatically via
+ * <p>All OIDC endpoints are resolved automatically via
  * {@code {issuerUri}/.well-known/openid-configuration}.</p>
  *
- * <h2>Minimal configuration:</h2>
+ * <h2>Required parameters:</h2>
+ * <ul>
+ *   <li>{@code issuerUri} — base URL of the OIDC provider
+ *       (e.g. {@code https://idp.example.com/realms/my-realm/}).
+ *       Used to discover JWKS, token, and authorization endpoints.</li>
+ *   <li>{@code clientId} — OAuth 2.1 client identifier registered at the provider.
+ *       Used for token introspection and client-credentials flow.</li>
+ * </ul>
+ *
+ * <h2>Optional parameters (with defaults):</h2>
+ * <ul>
+ *   <li>{@code clientSecret} — OAuth 2.1 client secret. Required only for
+ *       the client-credentials grant. Default: {@code null} (no secret).</li>
+ *   <li>{@code audience} — expected {@code aud} claim for token validation.
+ *       When set, tokens without this audience are rejected. Default: {@code null} (no audience check).</li>
+ *   <li>{@code httpTimeout} — connection and read timeout for all HTTP calls
+ *       (discovery, JWKS, token endpoint). Default: {@code 10s}.</li>
+ *   <li>{@code discoveryTtl} — how long the OIDC discovery document is cached
+ *       before re-fetching. Default: {@code 1h}.</li>
+ *   <li>{@code clockSkewTolerance} — allowed clock drift when verifying
+ *       token expiration ({@code exp}) and not-before ({@code nbf}) claims.
+ *       Default: {@code 30s}.</li>
+ *   <li>{@code requireHttps} — when {@code true}, rejects issuer URIs that
+ *       are not HTTPS. Disable for local development only. Default: {@code false}.</li>
+ * </ul>
+ *
+ * <h2>Minimal example:</h2>
  * <pre>{@code
  * var config = new AuthGateConfiguration.Builder()
  *     .issuerUri("https://idp.example.com/realms/my-realm/")
@@ -26,62 +49,57 @@ public final class AuthGateConfiguration {
     private final String clientId;
     private final String clientSecret;
     private final String audience;
-    private final Set<String> defaultScopes;
     private final Duration httpTimeout;
     private final Duration discoveryTtl;
     private final Duration clockSkewTolerance;
     private final boolean requireHttps;
-    private final String delegationHeaderName;
-    private final String delegationScope;
-    private final String filterTokenAttribute;
 
     private AuthGateConfiguration(Builder builder) {
         this.issuerUri = Objects.requireNonNull(builder.issuerUri, "issuerUri must not be null");
         this.clientId = Objects.requireNonNull(builder.clientId, "clientId must not be null");
         this.clientSecret = builder.clientSecret;
         this.audience = builder.audience;
-        this.defaultScopes = Objects.requireNonNullElse(builder.defaultScopes, Set.of("openid", "profile", "email"));
         this.httpTimeout = Objects.requireNonNullElse(builder.httpTimeout, Duration.ofSeconds(10));
         this.discoveryTtl = Objects.requireNonNullElse(builder.discoveryTtl, Duration.ofHours(1));
         this.clockSkewTolerance = Objects.requireNonNullElse(builder.clockSkewTolerance, Duration.ofSeconds(30));
         this.requireHttps = builder.requireHttps;
-        this.delegationHeaderName = Objects.requireNonNullElse(builder.delegationHeaderName, "X-Acting-Subject");
-        this.delegationScope = Objects.requireNonNullElse(builder.delegationScope, "service:delegate");
-        this.filterTokenAttribute = Objects.requireNonNullElse(builder.filterTokenAttribute, "io.authgate.validated.token");
     }
 
-    // ── Tell Don't Ask ────────────────────────────────────────────
+    // ── Accessors ────────────────────────────────────────────────
 
-    public void describeIssuerUriTo(Consumer<String> consumer) { consumer.accept(issuerUri); }
-    public void describeClientIdTo(Consumer<String> consumer) { consumer.accept(clientId); }
-    public void describeClientSecretTo(Consumer<String> consumer) { if (clientSecret != null) consumer.accept(clientSecret); }
-    public void describeAudienceTo(Consumer<String> consumer) { if (audience != null) consumer.accept(audience); }
-    public void describeDefaultScopesTo(Consumer<Set<String>> consumer) { consumer.accept(defaultScopes); }
-    public void describeHttpTimeoutTo(Consumer<Duration> consumer) { consumer.accept(httpTimeout); }
-    public void describeDiscoveryTtlTo(Consumer<Duration> consumer) { consumer.accept(discoveryTtl); }
-    public void describeClockSkewToleranceTo(Consumer<Duration> consumer) { consumer.accept(clockSkewTolerance); }
-    public void describeRequireHttpsTo(Consumer<Boolean> consumer) { consumer.accept(requireHttps); }
-    public void describeDelegationHeaderNameTo(Consumer<String> consumer) { consumer.accept(delegationHeaderName); }
-    public void describeDelegationScopeTo(Consumer<String> consumer) { consumer.accept(delegationScope); }
-    public void describeFilterTokenAttributeTo(Consumer<String> consumer) { consumer.accept(filterTokenAttribute); }
+    /** OIDC provider base URL. Never {@code null}. */
+    public String issuerUri()           { return issuerUri; }
 
-    boolean isConfidentialClient() {
-        return clientSecret != null && !clientSecret.isBlank();
-    }
+    /** OAuth 2.1 client identifier. Never {@code null}. */
+    public String clientId()            { return clientId; }
+
+    /** OAuth 2.1 client secret. {@code null} if not configured. */
+    public String clientSecret()        { return clientSecret; }
+
+    /** Expected {@code aud} claim. {@code null} if audience check is disabled. */
+    public String audience()            { return audience; }
+
+    /** HTTP timeout for all IdP calls. Never {@code null}. */
+    public Duration httpTimeout()       { return httpTimeout; }
+
+    /** OIDC discovery cache TTL. Never {@code null}. */
+    public Duration discoveryTtl()      { return discoveryTtl; }
+
+    /** Clock skew tolerance for token expiration checks. Never {@code null}. */
+    public Duration clockSkewTolerance() { return clockSkewTolerance; }
+
+    /** Whether to reject non-HTTPS issuer URIs. */
+    public boolean requireHttps()       { return requireHttps; }
 
     public static final class Builder {
         private String issuerUri;
         private String clientId;
         private String clientSecret;
         private String audience;
-        private Set<String> defaultScopes;
         private Duration httpTimeout;
         private Duration discoveryTtl;
         private Duration clockSkewTolerance;
         private boolean requireHttps;
-        private String delegationHeaderName;
-        private String delegationScope;
-        private String filterTokenAttribute;
 
         public Builder() {}
 
@@ -89,14 +107,10 @@ public final class AuthGateConfiguration {
         public Builder clientId(String v)                 { this.clientId = v; return this; }
         public Builder clientSecret(String v)             { this.clientSecret = v; return this; }
         public Builder audience(String v)                 { this.audience = v; return this; }
-        public Builder defaultScopes(Set<String> v)       { this.defaultScopes = v; return this; }
         public Builder httpTimeout(Duration v)            { this.httpTimeout = v; return this; }
         public Builder discoveryTtl(Duration v)           { this.discoveryTtl = v; return this; }
         public Builder clockSkewTolerance(Duration v)     { this.clockSkewTolerance = v; return this; }
         public Builder requireHttps(boolean v)            { this.requireHttps = v; return this; }
-        public Builder delegationHeaderName(String v)     { this.delegationHeaderName = v; return this; }
-        public Builder delegationScope(String v)          { this.delegationScope = v; return this; }
-        public Builder filterTokenAttribute(String v)     { this.filterTokenAttribute = v; return this; }
 
         public AuthGateConfiguration build() {
             return new AuthGateConfiguration(this);

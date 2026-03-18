@@ -17,10 +17,10 @@ import io.authgate.domain.service.TokenValidationRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URL;
 import java.text.ParseException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Validates bearer tokens locally using the IdP's JWKS endpoint.
@@ -59,8 +59,8 @@ public final class TokenValidator {
         } catch (ParseException e) {
             log.debug("JWT parse error: {}", e.getMessage());
             return new ValidationOutcome.Rejected(RejectionReason.MALFORMED_TOKEN);
-        } catch (Exception e) {
-            log.error("Unexpected error during JWT processing", e);
+        } catch (com.nimbusds.jose.JOSEException e) {
+            log.error("Unexpected JOSE error during JWT processing", e);
             return new ValidationOutcome.Rejected(RejectionReason.UNKNOWN);
         }
 
@@ -73,7 +73,7 @@ public final class TokenValidator {
      */
     public ValidationOutcome validateFromHeader(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            throw new IllegalArgumentException("Invalid Authorization header: expected 'Bearer <token>'");
+            return new ValidationOutcome.Rejected(RejectionReason.MALFORMED_TOKEN);
         }
         var rawJwt = authorizationHeader.substring(7).trim();
         return validate(rawJwt);
@@ -89,14 +89,6 @@ public final class TokenValidator {
                 .scopes(extractScopes(claims))
                 .audiences(claims.getAudience() != null ? new HashSet<>(claims.getAudience()) : Set.of());
 
-        if (claims.getIssueTime() != null) {
-            builder.issuedAt(claims.getIssueTime().toInstant());
-        }
-
-        var clientId = extractStringClaim(claims, "azp");
-        if (clientId == null) clientId = extractStringClaim(claims, "client_id");
-        if (clientId != null) builder.clientId(clientId);
-
         return builder.build();
     }
 
@@ -104,10 +96,7 @@ public final class TokenValidator {
         if (jwtProcessor == null) {
             synchronized (this) {
                 if (jwtProcessor == null) {
-                    var endpoints = endpointDiscovery.discover();
-                    var jwksUriRef = new AtomicReference<String>();
-                    endpoints.describeJwksUriTo(jwksUriRef::set);
-                    initializeProcessor(jwksUriRef.get());
+                    initializeProcessor(endpointDiscovery.discover().jwksUri());
                 }
             }
         }
@@ -142,7 +131,7 @@ public final class TokenValidator {
 
             this.jwtProcessor = processor;
             log.info("JWT processor initialized with JWKS from: {}", jwksUri);
-        } catch (Exception e) {
+        } catch (IOException e) {
             throw new IdentityProviderException("Failed to initialize JWKS processor from " + jwksUri, e);
         }
     }
@@ -155,12 +144,18 @@ public final class TokenValidator {
         try {
             var list = claims.getStringListClaim("scope");
             if (list != null) return new HashSet<>(list);
-        } catch (ParseException ignored) {}
+        } catch (ParseException e) {
+            log.trace("Scope claim is not a string list, skipping list extraction", e);
+        }
         return Set.of();
     }
 
     private String extractStringClaim(JWTClaimsSet claims, String name) {
-        try { return claims.getStringClaim(name); }
-        catch (ParseException e) { return null; }
+        try {
+            return claims.getStringClaim(name);
+        } catch (ParseException e) {
+            log.trace("Failed to extract claim '{}' as string", name, e);
+            return null;
+        }
     }
 }

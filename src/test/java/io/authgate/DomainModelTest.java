@@ -1,7 +1,6 @@
 package io.authgate;
 
 import io.authgate.domain.model.*;
-import io.authgate.domain.service.DelegationPolicy;
 import io.authgate.domain.service.TokenValidationRules;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -10,59 +9,12 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 
 class DomainModelTest {
-
-    @Nested
-    @DisplayName("BearerToken")
-    class BearerTokenTests {
-
-        @Test
-        void rejectsBlankValue() {
-            assertThatThrownBy(() -> new BearerToken(""))
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-
-        @Test
-        void rejectsNull() {
-            assertThatThrownBy(() -> new BearerToken(null))
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-
-        @Test
-        void neverLeaksValueInToString() {
-            var token = new BearerToken("super-secret-token");
-            assertThat(token.toString()).doesNotContain("super-secret-token");
-        }
-
-        @Test
-        void appliesAsHeader() {
-            var token = new BearerToken("xyz");
-            var captured = new String[1];
-            token.applyAsHeader(h -> captured[0] = h);
-            assertThat(captured[0]).isEqualTo("Bearer xyz");
-        }
-
-        @Test
-        void describesValue() {
-            var token = new BearerToken("abc123");
-            var captured = new String[1];
-            token.describeTo(v -> captured[0] = v);
-            assertThat(captured[0]).isEqualTo("abc123");
-        }
-
-        @Test
-        void equalityByValue() {
-            var a = new BearerToken("same");
-            var b = new BearerToken("same");
-            assertThat(a).isEqualTo(b);
-            assertThat(a.hashCode()).isEqualTo(b.hashCode());
-        }
-    }
 
     @Nested
     @DisplayName("ValidatedToken")
@@ -75,7 +27,6 @@ class DomainModelTest {
                     .scopes(Set.of("openid", "profile", "admin"))
                     .audiences(Set.of("my-service"))
                     .expiration(expiry)
-                    .clientId("cli-client")
                     .build();
         }
 
@@ -87,12 +38,8 @@ class DomainModelTest {
             assertThat(token.belongsTo("other")).isFalse();
             assertThat(token.hasScope("admin")).isTrue();
             assertThat(token.hasScope("delete")).isFalse();
-            assertThat(token.hasAllScopes(Set.of("openid", "admin"))).isTrue();
-            assertThat(token.hasAllScopes(Set.of("openid", "delete"))).isFalse();
-            assertThat(token.hasAnyScope(Set.of("delete", "admin"))).isTrue();
             assertThat(token.isIntendedFor("my-service")).isTrue();
             assertThat(token.isIntendedFor("other-service")).isFalse();
-            assertThat(token.issuedByClient("cli-client")).isTrue();
             assertThat(token.hasExpired()).isFalse();
         }
 
@@ -117,16 +64,9 @@ class DomainModelTest {
         }
 
         @Test
-        void describesStateThroughConsumers() {
+        void exposesSubject() {
             var token = createToken(Instant.now().plusSeconds(3600));
-
-            var sub = new String[1];
-            var iss = new String[1];
-            token.describeSubjectTo(v -> sub[0] = v);
-            token.describeIssuerTo(v -> iss[0] = v);
-
-            assertThat(sub[0]).isEqualTo("user-123");
-            assertThat(iss[0]).isEqualTo("https://sso.example.com/");
+            assertThat(token.subject()).isEqualTo("user-123");
         }
 
         @Test
@@ -136,11 +76,172 @@ class DomainModelTest {
         }
 
         @Test
+        void requireGrantedWhenScopePresent() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require().scope("admin").evaluate()).isInstanceOf(AuthorizationResult.Granted.class);
+        }
+
+        @Test
+        void requireDeniedWhenScopeMissing() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require().scope("nonexistent").evaluate()).isInstanceOf(AuthorizationResult.Denied.class);
+        }
+
+        @Test
+        void requireGrantedWithAllConstraints() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require()
+                    .scope("admin")
+                    .audience("my-service")
+                    .subject("user-123")
+                    .evaluate()).isInstanceOf(AuthorizationResult.Granted.class);
+        }
+
+        @Test
+        void requireDeniedOnSubjectMismatch() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require().subject("wrong-user").evaluate()).isInstanceOf(AuthorizationResult.Denied.class);
+        }
+
+        @Test
+        void requireGrantedWhenEmpty() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require().evaluate()).isInstanceOf(AuthorizationResult.Granted.class);
+        }
+
+        @Test
+        void denialReasonPresentWhenDenied() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            var result = token.require().scope("nonexistent").evaluate();
+            assertThat(result).isInstanceOf(AuthorizationResult.Denied.class);
+            switch (result) {
+                case AuthorizationResult.Denied d -> assertThat(d.reason()).contains("nonexistent");
+                default -> fail("Expected Denied");
+            }
+        }
+
+        @Test
+        void denialReasonAbsentWhenGranted() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require().scope("admin").evaluate()).isInstanceOf(AuthorizationResult.Granted.class);
+        }
+
+        @Test
+        void requireDeniedOnAudienceMismatch() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThat(token.require().audience("wrong-audience").evaluate()).isInstanceOf(AuthorizationResult.Denied.class);
+        }
+
+        @Test
+        void orThrowReturnsTokenWhenGranted() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            var result = token.require().scope("admin").subject("user-123").orThrow();
+            assertThat(result).isSameAs(token);
+        }
+
+        @Test
+        void orThrowThrowsWhenDenied() {
+            var token = createToken(Instant.now().plusSeconds(3600));
+            assertThatThrownBy(() -> token.require().scope("nonexistent").orThrow())
+                    .isInstanceOf(io.authgate.domain.exception.AccessDeniedException.class)
+                    .hasMessageContaining("nonexistent");
+        }
+
+        @Test
         void isIssuedByMatchesWithNormalization() {
             var token = createToken(Instant.now().plusSeconds(3600));
             assertThat(token.isIssuedBy(new IssuerUri("https://sso.example.com"))).isTrue();
             assertThat(token.isIssuedBy(new IssuerUri("https://sso.example.com/"))).isTrue();
             assertThat(token.isIssuedBy(new IssuerUri("https://other.example.com/"))).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("AuthorizationChain")
+    class AuthorizationChainTests {
+
+        private ValidatedToken validToken() {
+            return new ValidatedToken.Builder()
+                    .subject("user-123")
+                    .issuer("https://sso.example.com/")
+                    .scopes(Set.of("openid", "admin"))
+                    .audiences(Set.of("my-service"))
+                    .expiration(Instant.now().plusSeconds(3600))
+                    .build();
+        }
+
+        private ValidationOutcome validOutcome() {
+            return new ValidationOutcome.Valid(validToken());
+        }
+
+        private ValidationOutcome rejectedOutcome() {
+            return new ValidationOutcome.Rejected(RejectionReason.TOKEN_EXPIRED);
+        }
+
+        @Test
+        void evaluateGrantedWhenAllMatch() {
+            var result = new AuthorizationChain(validOutcome())
+                    .scope("admin").audience("my-service").subject("user-123").evaluate();
+            assertThat(result).isInstanceOf(AuthorizationResult.Granted.class);
+        }
+
+        @Test
+        void evaluateDeniedOnMissingScope() {
+            var result = new AuthorizationChain(validOutcome())
+                    .scope("nonexistent").evaluate();
+            assertThat(result).isInstanceOf(AuthorizationResult.Denied.class);
+        }
+
+        @Test
+        void evaluateRejectedOnInvalidToken() {
+            var result = new AuthorizationChain(rejectedOutcome())
+                    .scope("admin").evaluate();
+            assertThat(result).isInstanceOf(AuthorizationResult.Rejected.class);
+        }
+
+        @Test
+        void evaluateGrantedWithNoRequirements() {
+            var result = new AuthorizationChain(validOutcome()).evaluate();
+            assertThat(result).isInstanceOf(AuthorizationResult.Granted.class);
+        }
+
+        @Test
+        void orThrowReturnsTokenWhenGranted() {
+            var token = validToken();
+            var result = new AuthorizationChain(new ValidationOutcome.Valid(token))
+                    .scope("admin").orThrow();
+            assertThat(result).isSameAs(token);
+        }
+
+        @Test
+        void orThrowThrowsAccessDeniedOnDenied() {
+            assertThatThrownBy(() -> new AuthorizationChain(validOutcome()).scope("nonexistent").orThrow())
+                    .isInstanceOf(io.authgate.domain.exception.AccessDeniedException.class)
+                    .hasMessageContaining("nonexistent");
+        }
+
+        @Test
+        void orThrowThrowsTokenValidationOnRejected() {
+            assertThatThrownBy(() -> new AuthorizationChain(rejectedOutcome()).orThrow())
+                    .isInstanceOf(io.authgate.domain.exception.TokenValidationException.class);
+        }
+
+        @Test
+        void deniedExposesReason() {
+            var result = new AuthorizationChain(validOutcome()).subject("wrong").evaluate();
+            switch (result) {
+                case AuthorizationResult.Denied d -> assertThat(d.reason()).contains("wrong");
+                default -> fail("Expected Denied");
+            }
+        }
+
+        @Test
+        void rejectedExposesReason() {
+            var result = new AuthorizationChain(rejectedOutcome()).evaluate();
+            switch (result) {
+                case AuthorizationResult.Rejected r -> assertThat(r.reason().description()).contains("expired");
+                default -> fail("Expected Rejected");
+            }
         }
     }
 
@@ -169,11 +270,7 @@ class DomainModelTest {
 
             switch (outcome) {
                 case ValidationOutcome.Valid v -> fail("Expected Rejected");
-                case ValidationOutcome.Rejected r -> {
-                    var desc = new String[1];
-                    r.describeReasonTo(d -> desc[0] = d);
-                    assertThat(desc[0]).contains("expired");
-                }
+                case ValidationOutcome.Rejected r -> assertThat(r.reason().description()).contains("expired");
             }
         }
 
@@ -191,42 +288,54 @@ class DomainModelTest {
     }
 
     @Nested
-    @DisplayName("TokenInfo")
-    class TokenInfoTests {
+    @DisplayName("ServiceToken")
+    class ServiceTokenTests {
 
         @Test
-        void lifecycleBehavior() {
-            var token = new TokenInfo.Builder()
-                    .accessToken("acc")
-                    .refreshToken("ref")
-                    .expiresInSeconds(3600)
-                    .build();
-
-            assertThat(token.isExpired()).isFalse();
-            assertThat(token.canRefresh()).isTrue();
+        void freshTokenIsNotExpiringSoon() {
+            var body = Map.<String, Object>of("access_token", "acc", "expires_in", 3600);
+            var token = ServiceToken.fromTokenResponse(body);
+            assertThat(token.isExpiringSoon()).isFalse();
         }
 
         @Test
-        void noRefreshToken() {
-            var token = new TokenInfo.Builder()
-                    .accessToken("acc")
-                    .expiresInSeconds(3600)
-                    .build();
-
-            assertThat(token.canRefresh()).isFalse();
+        void almostExpiredTokenIsExpiringSoon() {
+            var body = Map.<String, Object>of("access_token", "acc", "expires_in", 10);
+            var token = ServiceToken.fromTokenResponse(body);
+            assertThat(token.isExpiringSoon()).isTrue();
         }
 
         @Test
-        void convertsToBearerToken() {
-            var token = new TokenInfo.Builder()
-                    .accessToken("my-jwt")
-                    .expiresInSeconds(60)
-                    .build();
+        void exposesAccessToken() {
+            var body = Map.<String, Object>of("access_token", "my-token", "expires_in", 3600);
+            var token = ServiceToken.fromTokenResponse(body);
+            assertThat(token.accessToken()).isEqualTo("my-token");
+        }
 
-            var bearer = token.toBearerToken();
-            var captured = new String[1];
-            bearer.describeTo(v -> captured[0] = v);
-            assertThat(captured[0]).isEqualTo("my-jwt");
+        @Test
+        void fromTokenResponseParsesStandardResponse() {
+            var body = Map.<String, Object>of(
+                    "access_token", "eyJhbGciOiJSUzI1NiJ9",
+                    "expires_in", 300,
+                    "token_type", "Bearer"
+            );
+            var token = ServiceToken.fromTokenResponse(body);
+            assertThat(token.isExpiringSoon()).isFalse();
+        }
+
+        @Test
+        void fromTokenResponseThrowsWithoutAccessToken() {
+            var body = Map.<String, Object>of("expires_in", 300);
+            assertThatThrownBy(() -> ServiceToken.fromTokenResponse(body))
+                    .isInstanceOf(io.authgate.domain.exception.IdentityProviderException.class)
+                    .hasMessageContaining("access_token");
+        }
+
+        @Test
+        void toStringDoesNotLeakAccessToken() {
+            var body = Map.<String, Object>of("access_token", "super-secret", "expires_in", 3600);
+            var token = ServiceToken.fromTokenResponse(body);
+            assertThat(token.toString()).doesNotContain("super-secret");
         }
     }
 
@@ -237,13 +346,8 @@ class DomainModelTest {
         @Test
         void allReasonsHaveDescriptions() {
             for (var reason : RejectionReason.values()) {
-                var desc = new String[1];
-                var code = new String[1];
-                reason.describeTo(d -> desc[0] = d);
-                reason.describeCodeTo(c -> code[0] = c);
-
-                assertThat(desc[0]).isNotBlank();
-                assertThat(code[0]).isNotBlank();
+                assertThat(reason.description()).isNotBlank();
+                assertThat(reason.code()).isNotBlank();
             }
         }
     }
@@ -319,20 +423,13 @@ class DomainModelTest {
     class DiscoveredEndpointsTests {
 
         @Test
-        void describesAllEndpoints() {
+        void exposesAllEndpoints() {
             var issuer = new IssuerUri("https://sso.example.com/");
             var endpoints = new DiscoveredEndpoints(issuer, "https://sso.example.com/token", "https://sso.example.com/jwks");
 
-            var issuerRef = new AtomicReference<IssuerUri>();
-            var tokenEndpoint = new String[1];
-            var jwksUri = new String[1];
-            endpoints.describeIssuerUriTo(issuerRef::set);
-            endpoints.describeTokenEndpointTo(v -> tokenEndpoint[0] = v);
-            endpoints.describeJwksUriTo(v -> jwksUri[0] = v);
-
-            assertThat(issuerRef.get()).isEqualTo(issuer);
-            assertThat(tokenEndpoint[0]).isEqualTo("https://sso.example.com/token");
-            assertThat(jwksUri[0]).isEqualTo("https://sso.example.com/jwks");
+            assertThat(endpoints.issuerUri()).isEqualTo(issuer);
+            assertThat(endpoints.tokenEndpoint()).isEqualTo("https://sso.example.com/token");
+            assertThat(endpoints.jwksUri()).isEqualTo("https://sso.example.com/jwks");
         }
 
         @Test
@@ -342,35 +439,6 @@ class DomainModelTest {
             var b = new DiscoveredEndpoints(issuer, "https://sso.example.com/token", "https://sso.example.com/jwks");
             assertThat(a).isEqualTo(b);
             assertThat(a.hashCode()).isEqualTo(b.hashCode());
-        }
-    }
-
-    @Nested
-    @DisplayName("DelegationContext")
-    class DelegationContextTests {
-
-        @Test
-        void describesSubjects() {
-            var ctx = new DelegationContext("service-abc", "user-456");
-            var acting = new String[1];
-            var service = new String[1];
-            ctx.describeActingSubjectTo(v -> acting[0] = v);
-            ctx.describeServiceSubjectTo(v -> service[0] = v);
-            assertThat(acting[0]).isEqualTo("user-456");
-            assertThat(service[0]).isEqualTo("service-abc");
-        }
-
-        @Test
-        void isActingFor() {
-            var ctx = new DelegationContext("service-abc", "user-456");
-            assertThat(ctx.isActingFor("user-456")).isTrue();
-            assertThat(ctx.isActingFor("other")).isFalse();
-        }
-
-        @Test
-        void neverLeaksSubjectsInToString() {
-            var ctx = new DelegationContext("service-abc", "user-456");
-            assertThat(ctx.toString()).doesNotContain("service-abc").doesNotContain("user-456");
         }
     }
 
@@ -477,81 +545,6 @@ class DomainModelTest {
                 case ValidationOutcome.Valid v -> { /* pass */ }
                 case ValidationOutcome.Rejected r -> fail("Expected Valid");
             }
-        }
-    }
-
-    @Nested
-    @DisplayName("DelegationPolicy")
-    class DelegationPolicyTests {
-
-        private final DelegationPolicy policy = new DelegationPolicy();
-
-        private ValidatedToken serviceToken() {
-            return new ValidatedToken.Builder()
-                    .subject("service-abc")
-                    .issuer("https://sso.example.com/")
-                    .expiration(Instant.now().plusSeconds(3600))
-                    .scopes(Set.of("openid", "service:delegate"))
-                    .build();
-        }
-
-        private ValidatedToken userToken() {
-            return new ValidatedToken.Builder()
-                    .subject("user-123")
-                    .issuer("https://sso.example.com/")
-                    .expiration(Instant.now().plusSeconds(3600))
-                    .scopes(Set.of("openid", "profile"))
-                    .build();
-        }
-
-        @Test
-        void createsDelegationContext() {
-            var result = policy.evaluate(serviceToken(), "user-456");
-            assertThat(result).isPresent();
-            result.ifPresent(ctx -> {
-                var acting = new String[1];
-                var service = new String[1];
-                ctx.describeActingSubjectTo(v -> acting[0] = v);
-                ctx.describeServiceSubjectTo(v -> service[0] = v);
-                assertThat(acting[0]).isEqualTo("user-456");
-                assertThat(service[0]).isEqualTo("service-abc");
-            });
-        }
-
-        @Test
-        void emptyWhenNoDelegateScope() {
-            var result = policy.evaluate(userToken(), "user-456");
-            assertThat(result).isEmpty();
-        }
-
-        @Test
-        void emptyWhenNoHeader() {
-            var result = policy.evaluate(serviceToken(), null);
-            assertThat(result).isEmpty();
-        }
-
-        @Test
-        void emptyWhenBlankHeader() {
-            var result = policy.evaluate(serviceToken(), "  ");
-            assertThat(result).isEmpty();
-        }
-
-        @Test
-        void customScopeAndHeader() {
-            var customPolicy = new DelegationPolicy("custom:act-as", "X-Custom-Header");
-            var token = new ValidatedToken.Builder()
-                    .subject("svc")
-                    .issuer("https://sso.example.com/")
-                    .expiration(Instant.now().plusSeconds(3600))
-                    .scopes(Set.of("custom:act-as"))
-                    .build();
-
-            var result = customPolicy.evaluate(token, "target-user");
-            assertThat(result).isPresent();
-
-            var headerName = new String[1];
-            customPolicy.describeHeaderNameTo(v -> headerName[0] = v);
-            assertThat(headerName[0]).isEqualTo("X-Custom-Header");
         }
     }
 

@@ -1,0 +1,71 @@
+package io.authgate.domain.model;
+
+import io.authgate.domain.exception.AccessDeniedException;
+import io.authgate.domain.exception.TokenValidationException;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+/**
+ * Fluent authorization chain that combines token validation with permission checks.
+ * Created via {@code AuthGate.authorize()} / {@code AuthGate.authorizeFromHeader()}.
+ *
+ * <p>Terminates with either {@link #evaluate()} (polymorphic result)
+ * or {@link #orThrow()} (exception on failure).</p>
+ */
+public final class AuthorizationChain {
+
+    private final ValidationOutcome outcome;
+    private final Set<String> requiredScopes = new LinkedHashSet<>();
+    private String requiredAudience;
+    private String requiredSubject;
+
+    public AuthorizationChain(ValidationOutcome outcome) {
+        this.outcome = outcome;
+    }
+
+    public AuthorizationChain scope(String scope) {
+        requiredScopes.add(scope);
+        return this;
+    }
+
+    public AuthorizationChain audience(String audience) {
+        this.requiredAudience = audience;
+        return this;
+    }
+
+    public AuthorizationChain subject(String subject) {
+        this.requiredSubject = subject;
+        return this;
+    }
+
+    public AuthorizationResult evaluate() {
+        return switch (outcome) {
+            case ValidationOutcome.Rejected r -> new AuthorizationResult.Rejected(r.reason());
+            case ValidationOutcome.Valid v -> checkPermissions(v.token());
+        };
+    }
+
+    public ValidatedToken orThrow() {
+        return switch (evaluate()) {
+            case AuthorizationResult.Granted g -> g.token();
+            case AuthorizationResult.Denied d -> throw new AccessDeniedException(d.reason());
+            case AuthorizationResult.Rejected r -> throw new TokenValidationException(r.reason());
+        };
+    }
+
+    private AuthorizationResult checkPermissions(ValidatedToken token) {
+        for (String scope : requiredScopes) {
+            if (!token.hasScope(scope)) {
+                return new AuthorizationResult.Denied("Missing required scope: " + scope);
+            }
+        }
+        if (requiredAudience != null && !token.isIntendedFor(requiredAudience)) {
+            return new AuthorizationResult.Denied("Token not intended for audience: " + requiredAudience);
+        }
+        if (requiredSubject != null && !token.belongsTo(requiredSubject)) {
+            return new AuthorizationResult.Denied("Token does not belong to subject: " + requiredSubject);
+        }
+        return new AuthorizationResult.Granted(token);
+    }
+}

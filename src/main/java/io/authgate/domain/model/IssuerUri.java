@@ -1,7 +1,6 @@
 package io.authgate.domain.model;
 
 import java.util.Objects;
-import java.util.function.Consumer;
 
 /**
  * Value Object representing a normalized OIDC issuer URI.
@@ -44,8 +43,9 @@ public final class IssuerUri {
         return normalized + path;
     }
 
-    public void describeTo(Consumer<String> consumer) {
-        consumer.accept(normalized);
+    /** Returns the normalized URI string (with trailing slash). */
+    public String value() {
+        return normalized;
     }
 
     @Override

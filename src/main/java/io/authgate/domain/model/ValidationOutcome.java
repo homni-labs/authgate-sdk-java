@@ -6,26 +6,16 @@ package io.authgate.domain.model;
  *
  * <pre>{@code
  * switch (outcome) {
- *     case ValidationOutcome.Valid v -> v.token().hasScope("admin");
- *     case ValidationOutcome.Rejected r -> r.describeReasonTo(log::warn);
+ *     case ValidationOutcome.Valid v    -> v.token().hasScope("admin");
+ *     case ValidationOutcome.Rejected r -> log.warn(r.reason().description());
  * }
  * }</pre>
  */
 public sealed interface ValidationOutcome {
 
-    // ── Variants ─────────────────────────────────────────────────
+    /** Token is valid. Contains the {@link ValidatedToken} with parsed claims. */
+    record Valid(ValidatedToken token) implements ValidationOutcome {}
 
-    record Valid(ValidatedToken token) implements ValidationOutcome {
-    }
-
-    record Rejected(RejectionReason reason) implements ValidationOutcome {
-
-        public void describeReasonTo(java.util.function.Consumer<String> consumer) {
-            reason.describeTo(consumer);
-        }
-
-        public void describeCodeTo(java.util.function.Consumer<String> consumer) {
-            reason.describeCodeTo(consumer);
-        }
-    }
+    /** Token was rejected. Contains the {@link RejectionReason}. */
+    record Rejected(RejectionReason reason) implements ValidationOutcome {}
 }
