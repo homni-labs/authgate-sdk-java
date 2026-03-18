@@ -114,3 +114,9 @@ var sdk = AuthGate.builder(config)
 | slf4j-api | Logging facade |
 
 **Requires:** Java 21+
+
+## Roadmap
+
+1. **Token Exchange (RFC 8693)** — delegation and impersonation flows
+2. **Token Refresh** — automatic access token renewal via refresh tokens
+3. **Artifact optimization** — reduce SDK binary size and dependency footprint
