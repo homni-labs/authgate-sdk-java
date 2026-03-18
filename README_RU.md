@@ -122,3 +122,4 @@ var sdk = AuthGate.builder(config)
 3. **UserInfo-эндпоинт** — `getUserInfo(accessToken)` для получения данных пользователя (sub, scopes, roles) без лишних запросов к IdP
 4. **Отказ от геттеров в пользу модификаторов доступа** — доступ к полям через package-private вместо геттеров (`token.accessToken` вместо `token.accessToken()`), при необходимости реорганизация пакетов; `public`-полей избегать
 5. **Оптимизация артефакта** — снижение размера SDK и минимизация зависимостей
+6. **Maven Central** — публикация артефакта в Maven Central
