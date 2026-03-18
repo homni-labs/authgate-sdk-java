@@ -76,8 +76,6 @@ public final class AuthGate {
                 : null;
     }
 
-    // ── Token Validation ───────────────────────────────────────
-
     /**
      * Validates a raw JWT string and returns the outcome.
      *

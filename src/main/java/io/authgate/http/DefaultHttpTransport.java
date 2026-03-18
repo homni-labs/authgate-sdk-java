@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 public final class DefaultHttpTransport implements HttpTransport, Closeable {
 
     private static final String JSON_CONTENT_TYPE = "application/json";
+    private static final int MAX_RESPONSE_BODY_BYTES = 1024 * 1024; // 1 MB
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -79,7 +80,7 @@ public final class DefaultHttpTransport implements HttpTransport, Closeable {
 
     private TransportResponse execute(HttpRequest request) {
         try {
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             var contentType = response.headers().firstValue("Content-Type").orElse("");
 
             if (!contentType.contains("json")) {
@@ -89,14 +90,24 @@ public final class DefaultHttpTransport implements HttpTransport, Closeable {
                                 + " (HTTP " + response.statusCode() + ")");
             }
 
-            Map<String, Object> body = objectMapper.readValue(response.body(), new TypeReference<>() {});
+            String bodyString;
+            try (var inputStream = response.body()) {
+                byte[] bytes = inputStream.readNBytes(MAX_RESPONSE_BODY_BYTES + 1);
+                if (bytes.length > MAX_RESPONSE_BODY_BYTES) {
+                    throw new IdentityProviderException(
+                            "Response body from " + request.uri()
+                                    + " exceeds maximum allowed size of " + MAX_RESPONSE_BODY_BYTES + " bytes");
+                }
+                bodyString = new String(bytes, StandardCharsets.UTF_8);
+            }
+
+            Map<String, Object> body = objectMapper.readValue(bodyString, new TypeReference<>() {});
             return new TransportResponse(response.statusCode(), body);
         } catch (IdentityProviderException e) {
             throw e;
         } catch (IOException e) {
             throw new IdentityProviderException("HTTP request failed: " + request.uri(), e);
         } catch (InterruptedException e) {
-            //TODO не оч хорошее решение, но HttpClient.send() может выбросить InterruptedException, и мы должны уважать это
             Thread.currentThread().interrupt();
             throw new IdentityProviderException("HTTP request interrupted: " + request.uri(), e);
         }
