@@ -144,6 +144,24 @@ var sdk = AuthGate.builder(config)
 | 🔲 | Оптимизация артефакта — снижение размера SDK | [issue](https://github.com/homni-app/authgate-sdk-java/issues/5) |
 | 🔲 | Публикация в Maven Central | [issue](https://github.com/homni-app/authgate-sdk-java/issues/6) |
 
+## Contributing
+
+1. Форкните репозиторий
+2. Создайте ветку от `master` (`feature/...`, `fix/...`, `refactor/...`)
+3. Напишите код и тесты
+4. `mvn clean install`
+5. Откройте Pull Request — один фикс или фича на PR, привяжите issue (`Closes #1`)
+
+> **Стиль кода** — следуйте существующим конвенциям, пишите тесты на каждую новую фичу, покрывайте edge cases.
+
+### Вопросы?
+
+| Канал | Ссылка |
+|-------|--------|
+| GitHub Discussions | [discussions](https://github.com/homni-app/authgate-sdk-java/discussions) |
+| Telegram | [@zaytsev_dv](https://t.me/zaytsev_dv) |
+| Email | zaytsev.dmitry9228@gmail.com |
+
 ## Лицензия
 
 Проект распространяется под лицензией [MIT](LICENSE).
