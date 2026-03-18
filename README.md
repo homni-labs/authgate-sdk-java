@@ -115,6 +115,10 @@ var sdk = AuthGate.builder(config)
 
 **Requires:** Java 21+
 
+## License
+
+[MIT](LICENSE)
+
 ## Roadmap
 
 1. **Token Exchange (RFC 8693)** — delegation and impersonation flows
