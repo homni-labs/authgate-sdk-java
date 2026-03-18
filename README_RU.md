@@ -22,8 +22,8 @@
 ```xml
 <dependency>
     <groupId>io.authgate</groupId>
-    <artifactId>authgate-sdk</artifactId>
-    <version>1.0.0</version>
+    <artifactId>authgate-sdk-java</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
