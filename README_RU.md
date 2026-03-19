@@ -8,6 +8,7 @@
 
 Валидация JWT и получение сервисных токенов через client-credentials — без привязки к фреймворку.
 
+[![Maven Central](https://img.shields.io/badge/Maven%20Central-0.0.1--alpha.1-orange)](https://repo1.maven.org/maven2/io/github/homni-labs/authgate-sdk-java/)
 [![Java 21+](https://img.shields.io/badge/Java-21%2B-blue)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -21,9 +22,9 @@
 
 ```xml
 <dependency>
-    <groupId>io.authgate</groupId>
+    <groupId>io.github.homni-labs</groupId>
     <artifactId>authgate-sdk-java</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.0.1-alpha.1</version>
 </dependency>
 ```
 
